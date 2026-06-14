@@ -311,8 +311,8 @@ def apply_bracket(code):
 # --------------------------------------------------------------------------- #
 def bracket_figure(rounds, champion, for_export=False):
     """Left-to-right bracket tree. Columns are teams advancing each round.
-    for_export=True adds a title and a solid dark background for clean
-    downloadable PNG/HTML files."""
+    for_export=True adds a title and a solid dark background for a clean
+    downloadable HTML file."""
     # Column 0 = the 32 seeded teams; columns 1..5 = winners of each round.
     columns = [seed_r32()]
     for r in range(5):
@@ -619,26 +619,13 @@ def page_prediction():
 
     st.write("")
     st.markdown("**Download the bracket** to post or send as a file:")
-    d1, d2 = st.columns(2)
     export_fig = bracket_figure(rounds, champion, for_export=True)
-    with d1:
-        try:
-            png = export_fig.to_image(format="png", width=1500, height=1100, scale=2)
-            st.download_button(
-                "📥 Bracket image (PNG)", png,
-                file_name="wc2026_bracket.png", mime="image/png",
-                width="stretch",
-            )
-        except Exception:
-            st.caption("PNG export needs the `kaleido` package — use the HTML "
-                       "download instead, it works everywhere.")
-    with d2:
-        html = export_fig.to_html(include_plotlyjs="cdn", full_html=True)
-        st.download_button(
-            "🌐 Interactive bracket (HTML)", html,
-            file_name="wc2026_bracket.html", mime="text/html",
-            width="stretch",
-        )
+    html = export_fig.to_html(include_plotlyjs="cdn", full_html=True)
+    st.download_button(
+        "🌐 Download interactive bracket (HTML)", html,
+        file_name="wc2026_bracket.html", mime="text/html",
+        width="stretch",
+    )
 
     # ----- Copy-paste text summary -----
     st.write("")
