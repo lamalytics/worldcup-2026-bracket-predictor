@@ -6,7 +6,10 @@ FIFA World Cup 2026 from the group stage through to the final.
 Run with:  streamlit run app.py
 """
 
+import json
+
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -241,10 +244,75 @@ def set_pick(r, i, team):
 
 
 # --------------------------------------------------------------------------- #
+#  Shareable bracket codes  (group picks + 31 knockout results -> URL string)
+# --------------------------------------------------------------------------- #
+KNOCKOUT_COUNTS = [16, 8, 4, 2, 1]
+
+
+def encode_bracket():
+    """Compact code: 12 groups (2 digits each) + '-' + 31 trits for knockouts.
+    Each knockout trit is 0 (top team), 1 (bottom team) or 2 (unpicked)."""
+    grp = []
+    for g, teams in GROUPS.items():
+        first = st.session_state.get(f"first_{g}")
+        second = st.session_state.get(f"second_{g}")
+        fi = teams.index(first) if first in teams else 0
+        si = teams.index(second) if second in teams else (1 if fi != 1 else 0)
+        grp.append(f"{fi}{si}")
+    rounds, _ = build_rounds()
+    trits = []
+    for r in range(5):
+        for (a, b, w) in rounds[r]:
+            trits.append("0" if w == a and w is not None
+                         else "1" if w == b and w is not None else "2")
+    return "".join(grp) + "-" + "".join(trits)
+
+
+def apply_bracket(code):
+    """Inverse of encode_bracket. Writes picks into session_state. Safe on junk."""
+    try:
+        grp, ko = code.split("-")
+        groups = list(GROUPS.items())
+        if len(grp) != 2 * len(groups):
+            return False
+        for idx, (g, teams) in enumerate(groups):
+            fi = int(grp[2 * idx])
+            si = int(grp[2 * idx + 1])
+            first = teams[fi % 4]
+            second = teams[si % 4]
+            if second == first:
+                second = next(t for t in teams if t != first)
+            st.session_state[f"first_{g}"] = first
+            st.session_state[f"second_{g}"] = second
+        # Rebuild the knockout structure from the freshly-set group picks and
+        # apply each trit in the same order encode_bracket produced them.
+        column = seed_r32()
+        ti = 0
+        for r in range(5):
+            n = len(column) // 2
+            winners = []
+            for i in range(n):
+                a, b = column[2 * i], column[2 * i + 1]
+                t = ko[ti] if ti < len(ko) else "2"
+                ti += 1
+                w = a if t == "0" else b if t == "1" else None
+                if w not in (a, b):
+                    w = None
+                st.session_state[f"pick_{r}_{i}"] = w
+                winners.append(w)
+            column = winners
+        return True
+    except (ValueError, IndexError, KeyError):
+        return False
+
+
+# --------------------------------------------------------------------------- #
 #  Plotly bracket visualisation
 # --------------------------------------------------------------------------- #
-def bracket_figure(rounds, champion):
-    """Left-to-right bracket tree. Columns are teams advancing each round."""
+def bracket_figure(rounds, champion, for_export=False):
+    """Left-to-right bracket tree. Columns are teams advancing each round.
+    for_export=True adds a title and a solid dark background for clean
+    downloadable PNG/HTML files."""
     # Column 0 = the 32 seeded teams; columns 1..5 = winners of each round.
     columns = [seed_r32()]
     for r in range(5):
@@ -317,12 +385,20 @@ def bracket_figure(rounds, champion):
                            showarrow=False, font=dict(size=13, color="#9aa4b2"))
 
     fig.update_xaxes(visible=False, range=[-0.3, 5.9])
-    fig.update_yaxes(visible=False, range=[-0.5, TOTAL + 1.8])
+    fig.update_yaxes(visible=False, range=[-0.5, TOTAL + 2.6 if for_export else TOTAL + 1.8])
     fig.update_layout(
-        height=1080, margin=dict(l=10, r=10, t=10, b=10),
+        height=1080, margin=dict(l=10, r=10, t=70 if for_export else 10, b=10),
         showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
+    if for_export:
+        fig.update_layout(
+            paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+            title=dict(
+                text=f"World Cup 2026 — Champion: {label(champion)} 🏆",
+                x=0.5, xanchor="center", font=dict(size=22, color="#2bd576"),
+            ),
+        )
     return fig
 
 
@@ -493,26 +569,104 @@ def page_prediction():
             )
             st.dataframe(res, hide_index=True, width="stretch")
 
+    # ----- Visual bracket (the shareable centrepiece) -----
+    st.markdown("### 🌳 Your full bracket")
+    fig = bracket_figure(rounds, champion)
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
     # ----- Share -----
-    st.markdown("### 📋 Share my bracket")
-    lines = ["🏆 My World Cup 2026 Bracket", ""]
-    lines.append(f"CHAMPION: {label(champion)}")
-    lines.append(f"Runner-up: {label(runner_up)}")
-    lines.append("")
-    lines.append("Semi-finalists: " + ", ".join(
-        label(w) for (a, b, w) in rounds[2]))
-    lines.append("")
-    lines.append(f"My champion won {streak} matches in a row to lift the trophy.")
-    lines.append("— made with the WC2026 Bracket Predictor")
-    share_text = "\n".join(lines)
-    st.code(share_text, language=None)
-    st.caption("Copy the box above to share your prediction.")
+    st.markdown("### 🔗 Share my bracket")
+    code = encode_bracket()
+    # Keep the address bar in sync so the URL itself is always shareable.
+    if st.query_params.get("b") != code:
+        st.query_params["b"] = code
+
+    st.markdown("**Share link** — anyone who opens it sees this exact bracket:")
+    link_widget = f"""
+        <div style="display:flex;gap:8px;font-family:-apple-system,system-ui,sans-serif;">
+          <input id="b_link" readonly
+                 style="flex:1;padding:9px 11px;border-radius:9px;border:1px solid #2bd57655;
+                        background:#0e1117;color:#e6eaf0;font-size:13px;">
+          <button id="b_copy"
+                  style="padding:9px 16px;border-radius:9px;border:0;background:#2bd576;
+                         color:#08130c;font-weight:700;cursor:pointer;font-size:13px;">Copy</button>
+        </div>
+        <script>
+          (function() {{
+            var code = {json.dumps(code)};
+            var base = "";
+            try {{ base = window.parent.location.origin + window.parent.location.pathname; }}
+            catch (e) {{ base = ""; }}
+            var url = (base || "") + "?b=" + code;
+            var inp = document.getElementById("b_link");
+            inp.value = url;
+            document.getElementById("b_copy").onclick = function() {{
+              inp.select(); navigator.clipboard.writeText(url);
+              var self = this; self.innerText = "Copied!";
+              setTimeout(function() {{ self.innerText = "Copy"; }}, 1500);
+            }};
+          }})();
+        </script>
+    """
+    try:
+        components.html(link_widget, height=56)
+    except Exception:
+        # Fallback if the components iframe is unavailable: the live URL in the
+        # browser address bar already carries ?b=<code>, so this still shares.
+        st.code(f"?b={code}", language=None)
+    st.caption("Tip: you can also just copy the URL from your browser's address bar — "
+               "it always carries your current bracket.")
+
+    st.write("")
+    st.markdown("**Download the bracket** to post or send as a file:")
+    d1, d2 = st.columns(2)
+    export_fig = bracket_figure(rounds, champion, for_export=True)
+    with d1:
+        try:
+            png = export_fig.to_image(format="png", width=1500, height=1100, scale=2)
+            st.download_button(
+                "📥 Bracket image (PNG)", png,
+                file_name="wc2026_bracket.png", mime="image/png",
+                width="stretch",
+            )
+        except Exception:
+            st.caption("PNG export needs the `kaleido` package — use the HTML "
+                       "download instead, it works everywhere.")
+    with d2:
+        html = export_fig.to_html(include_plotlyjs="cdn", full_html=True)
+        st.download_button(
+            "🌐 Interactive bracket (HTML)", html,
+            file_name="wc2026_bracket.html", mime="text/html",
+            width="stretch",
+        )
+
+    # ----- Copy-paste text summary -----
+    st.write("")
+    with st.expander("📋 Text summary (copy/paste)"):
+        lines = ["🏆 My World Cup 2026 Bracket", ""]
+        lines.append(f"CHAMPION: {label(champion)}")
+        lines.append(f"Runner-up: {label(runner_up)}")
+        lines.append("")
+        lines.append("Semi-finalists: " + ", ".join(
+            label(w) for (a, b, w) in rounds[2]))
+        lines.append("")
+        lines.append(f"My champion won {streak} matches in a row to lift the trophy.")
+        lines.append("— made with the WC2026 Bracket Predictor")
+        st.code("\n".join(lines), language=None)
 
 
 # --------------------------------------------------------------------------- #
 #  App shell
 # --------------------------------------------------------------------------- #
 def main():
+    # A shared bracket arrives as ?b=<code>. Apply it once, before any widget
+    # (group radios) is instantiated so the picks take effect this run.
+    shared = st.query_params.get("b")
+    if shared and st.session_state.get("_applied_share") != shared:
+        if apply_bracket(shared):
+            st.session_state._applied_share = shared
+            st.session_state._seeded = True  # don't overwrite the shared picks
+
     init_group_state()
     if not st.session_state.get("_seeded"):
         autofill(overwrite=False)   # populated bracket out of the box

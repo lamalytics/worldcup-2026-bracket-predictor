@@ -11,7 +11,8 @@ An interactive, visual Streamlit app for predicting the FIFA World Cup 2026 — 
 - **Knockout Bracket** — Round of 32 → Round of 16 → Quarter-finals → Semi-finals → Final. Click a team to send it through; winners flow left to right.
 - **AI Pick** — auto-fills every remaining match using hardcoded FIFA-style world rankings (lower rank number wins).
 - **Plotly bracket view** — the full bracket as a connected tree, winners in green, eliminated teams in gray, champion crowned at the top.
-- **My Prediction** — your champion shown large with a trophy, their full road to the title, a round-by-round results table, and a copy-paste shareable summary.
+- **My Prediction** — your champion shown large with a trophy, their full road to the title, and a round-by-round results table.
+- **Share your bracket** — a **share link** that encodes the whole bracket in the URL (open it and you see the exact picks), plus downloadable **PNG image** and **interactive HTML** of the bracket, and a copy-paste text summary.
 - **Country flag emojis** next to every team, dark-friendly UI, and a populated bracket the moment you open it.
 
 ## Run it
@@ -31,8 +32,13 @@ Each group winner and runner-up advances directly. Third-placed teams are scored
 
 - **Streamlit** for the UI and `st.session_state` for persisting every pick across pages
 - **Plotly** for the bracket tree visualisation
+- **kaleido** to export the bracket as a PNG image
 - **pandas** for the standings and results tables
 - Single file: [`app.py`](app.py)
+
+## Sharing
+
+Every bracket is encoded into a short code (12 group picks + 31 knockout results) carried in the URL as `?b=...`. Copy the share link from the My Prediction page — or straight from your browser's address bar — and whoever opens it lands on your exact bracket. You can also download the bracket as a PNG or a standalone interactive HTML file.
 
 ## Note on teams
 
