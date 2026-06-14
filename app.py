@@ -373,7 +373,7 @@ def page_group_stage():
         if st.button("🔒 Lock Group Stage", type="primary", width="stretch"):
             st.session_state.locked = True
             autofill(overwrite=False)
-            st.session_state.nav = "🏆 Bracket"
+            st.session_state._pending_nav = "🏆 Bracket"
             st.rerun()
     with c2:
         if st.session_state.get("locked"):
@@ -522,6 +522,11 @@ def main():
         st.markdown("## ⚽ WC 2026")
         st.markdown("**Bracket Predictor**")
         st.divider()
+        # Apply any navigation requested by a button on the previous run,
+        # before the radio widget is instantiated (Streamlit forbids mutating
+        # a widget-backed key after the widget exists).
+        if "_pending_nav" in st.session_state:
+            st.session_state.nav = st.session_state.pop("_pending_nav")
         st.session_state.setdefault("nav", "🏟️ Group Stage")
         nav = st.radio(
             "Pages",
